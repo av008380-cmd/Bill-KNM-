@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bill PDF Creator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: { 400: '#60a5fa', 500: '#3b82f6', 600: '#2563eb' }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Custom scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+        
+        .drag-active {
+            border-color: #3b82f6 !important;
+            background-color: rgba(59, 130, 246, 0.1) !important;
+        }
+
+        #toast {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            opacity: 0;
+            transform: translateY(20px) scale(0.95);
+            pointer-events: none;
+        }
+        #toast.show {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+            pointer-events: auto;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 min-h-screen font-sans antialiased transition-colors duration-200">
+
+    <div class="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
+        
+        <!-- Header -->
+        <header class="flex flex-col sm:flex-row justify-between items-center pb-4 border-b border-gray-200 dark:border-gray-800 gap-4">
+            <div>
+                <h1 class="text-3xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-brand-400 to-brand-600">
+                    Bill PDF Creator
+                </h1>
+                <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">Easily batch photos into precise, optimized PDFs.</p>
+            </div>
+            <!-- Theme Toggle -->
+            <button onclick="toggleTheme()" class="p-2 rounded-full bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 transition">
+                <svg id="themeIcon" class="w-5 h-5 text-gray-700 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <!-- Default to moon (dark mode active) -->
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path>
+                </svg>
+            </button>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            
+            <!-- Left Sidebar: Controls -->
+            <div class="lg:col-span-4 xl:col-span-3 space-y-6">
+                
+                <div class="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 space-y-5">
+                    
+                    <!-- Orientation -->
+                    <div>
+                        <label class="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">Page Orientation</label>
+                        <div class="flex rounded-lg shadow-sm">
+                            <button type="button" id="btnPortrait" onclick="setOrientation('portrait')" class="flex-1 py-2 px-4 text-sm font-medium border border-gray-300 dark:border-gray-600 rounded-l-lg bg-brand-500 text-white hover:bg-brand-600 focus:z-10 focus:ring-2 focus:ring-brand-500 transition-colors">Portrait</button>
+                            <button type="button" id="btnLandscape" onclick="setOrientation('landscape')" class="flex-1 py-2 px-4 text-sm font-medium border border-l-0 border-gray-300 dark:border-gray-600 rounded-r-lg bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-600 focus:z-10 focus:ring-2 focus:ring-brand-500 transition-colors">Landscape</button>
+                        </div>
+                    </div>
+
+                    <!-- Layout -->
+                    <div>
+                        <label class="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">Layout</label>
+                        <select id="layoutSelect" class="w-full rounded-lg border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white px-3 py-2 text-sm focus:ring-brand-500 focus:border-brand-500 transition-colors shadow-sm border">
+                            <option value="1">1 Bill (1x1)</option>
+                            <option value="2v">2 Bills (2 Rows, 1 Col)</option>
+                            <option value="2h">2 Bills (1 Row, 2 Cols)</option>
+                            <option value="4" selected>4 Bills Grid (2x2)</option>
+                            <option value="6">6 Bills Grid (3x2)</option>
+                        </select>
+                    </div>
+
+                    <div class="border-t border-gray-200 dark:border-gray-700 pt-4 space-y-4">
+                        <!-- Margin Slider -->
+                        <div>
+                            <div class="flex justify-between items-center mb-1">
+                                <label class="text-sm font-semibold text-gray-700 dark:text-gray-300">Page Margin</label>
+                                <span id="marginVal" class="text-xs font-mono bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded">2mm</span>
+                            </div>
+                            <input type="range" id="marginRange" min="0" max="20" value="2" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700 accent-brand-500">
+                        </div>
+
+                        <!-- Horizontal Gap -->
+                        <div>
+                            <div class="flex justify-between items-center mb-1">
+                                <label class="text-sm font-semibold text-gray-700 dark:text-gray-300">Horiz. Gap</label>
+                                <span id="hGapVal" class="text-xs font-mono bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded">1mm</span>
+                            </div>
+                            <input type="range" id="hGapRange" min="0" max="20" value="1" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700 accent-brand-500">
+                        </div>
+
+                        <!-- Vertical Gap -->
+                        <div>
+                            <div class="flex justify-between items-center mb-1">
+                                <label class="text-sm font-semibold text-gray-700 dark:text-gray-300">Vert. Gap</label>
+                                <span id="vGapVal" class="text-xs font-mono bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded">1mm</span>
+                            </div>
+                            <input type="range" id="vGapRange" min="0" max="20" value="1" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700 accent-brand-500">
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- Actions -->
+                <div class="space-y-3">
+                    <button onclick="handlePDFAction('download')" id="btnDownload" class="w-full flex items-center justify-center gap-2 bg-brand-600 hover:bg-brand-700 text-white font-bold py-3 px-4 rounded-xl shadow-md transition-all focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900 disabled:opacity-50">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                        <span>Download PDF</span>
+                    </button>
+                    <button onclick="handlePDFAction('print')" id="btnPrint" class="w-full flex items-center justify-center gap-2 bg-gray-800 hover:bg-gray-700 dark:bg-gray-200 dark:hover:bg-white dark:text-gray-900 text-white font-bold py-3 px-4 rounded-xl shadow-md transition-all focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900 disabled:opacity-50">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
+                        <span>Print Directly</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Main Area: Dropzone & Files -->
+            <div class="lg:col-span-8 xl:col-span-9 flex flex-col space-y-6">
+                
+                <!-- Dropzone -->
+                <div id="dropzone" tabindex="0" class="relative overflow-hidden bg-white dark:bg-gray-800 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl p-10 text-center cursor-pointer transition-all hover:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500 group min-h-[200px] flex flex-col justify-center items-center">
+                    <input type="file" id="fileInput" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" multiple accept="image/*">
+                    <div class="p-4 bg-brand-50 dark:bg-gray-700 text-brand-500 dark:text-brand-400 rounded-full mb-4 group-hover:scale-110 transition-transform duration-300">
+                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                    </div>
+                    <h3 class="text-lg font-bold text-gray-800 dark:text-gray-100">Drag & Drop Photos Here</h3>
+                    <p class="text-sm text-gray-500 dark:text-gray-400 mt-2">or click to browse</p>
+                    <div class="mt-4 px-3 py-1 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-full text-xs font-medium flex items-center gap-2 border border-gray-200 dark:border-gray-600">
+                        <kbd class="font-sans font-bold">CTRL + V</kbd> Supported anywhere!
+                    </div>
+                </div>
+
+                <!-- File List -->
+                <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 flex flex-col flex-1 min-h-[300px] overflow-hidden">
+                    <div class="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-800/50">
+                        <div>
+                            <h2 class="text-sm font-bold text-gray-800 dark:text-gray-200">Image Queue</h2>
+                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Sorted naturally by filename.</p>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <span class="text-xs font-semibold bg-brand-100 dark:bg-brand-900/30 text-brand-700 dark:text-brand-300 px-2.5 py-1 rounded-full"><span id="imageCount">0</span> images</span>
+                            <button onclick="clearAll()" class="text-xs text-red-500 hover:text-red-700 dark:hover:text-red-400 font-medium transition-colors">Clear All</button>
+                        </div>
+                    </div>
+                    
+                    <div id="previewContainer" class="flex-1 overflow-y-auto p-4 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 auto-rows-max">
+                        <!-- Empty State -->
+                        <div id="emptyState" class="col-span-full h-full min-h-[200px] flex flex-col items-center justify-center text-gray-400 dark:text-gray-500 space-y-3">
+                            <svg class="w-12 h-12 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 002-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+                            <p class="text-sm">Queue is empty. Add some photos.</p>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-6 right-6 flex items-center p-4 mb-4 w-full max-w-xs text-gray-500 bg-white rounded-lg shadow-xl border border-gray-100 dark:text-gray-400 dark:bg-gray-800 dark:border-gray-700 z-50">
+        <div id="toastIcon" class="inline-flex flex-shrink-0 justify-center items-center w-8 h-8 rounded-lg"></div>
+        <div id="toastMessage" class="ml-3 text-sm font-medium"></div>
+    </div>
+
+    <script>
+        // --- State ---
+        let images = [];
+        let pasteCounter = 1;
+        let orientation = 'portrait';
+        let isProcessing = false;
+
+        // --- DOM Elements ---
+        const dropzone = document.getElementById('dropzone');
+        const fileInput = document.getElementById('fileInput');
+        const previewContainer = document.getElementById('previewContainer');
+        const emptyState = document.getElementById('emptyState');
+        const imageCount = document.getElementById('imageCount');
+        
+        // Sliders
+        const marginRange = document.getElementById('marginRange');
+        const hGapRange = document.getElementById('hGapRange');
+        const vGapRange = document.getElementById('vGapRange');
+        const marginVal = document.getElementById('marginVal');
+        const hGapVal = document.getElementById('hGapVal');
+        const vGapVal = document.getElementById('vGapVal');
+
+        // --- Initialization ---
+        function init() {
+            // Setup slider listeners
+            [
+                { el: marginRange, val: marginVal },
+                { el: hGapRange, val: hGapVal },
+                { el: vGapRange, val: vGapVal }
+            ].forEach(item => {
+                item.el.addEventListener('input', (e) => {
+                    item.val.textContent = e.target.value + 'mm';
+                });
+            });
+
+            // Drag events for styling (fileInput handles actual upload)
+            dropzone.addEventListener('dragenter', () => dropzone.classList.add('drag-active'));
+            dropzone.addEventListener('dragover', (e) => e.preventDefault());
+            dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag-active'));
+            dropzone.addEventListener('drop', () => dropzone.classList.remove('drag-active'));
+
+            fileInput.addEventListener('change', handleFileSelect);
+            
+            // Global Paste handling
+            window.addEventListener('paste', handleGlobalPaste);
+        }
+
+        // --- Theme Toggle ---
+        function toggleTheme() {
+            const html = document.documentElement;
+            const icon = document.getElementById('themeIcon');
+            if (html.classList.contains('dark')) {
+                html.classList.remove('dark');
+                // Switch to sun icon
+                icon.innerHTML = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path>`;
+            } else {
+                html.classList.add('dark');
+                // Switch to moon icon
+                icon.innerHTML = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path>`;
+            }
+        }
+
+        // --- Orientation UI ---
+        function setOrientation(type) {
+            orientation = type;
+            const btnP = document.getElementById('btnPortrait');
+            const btnL = document.getElementById('btnLandscape');
+            
+            if (type === 'portrait') {
+                btnP.className = "flex-1 py-2 px-4 text-sm font-medium border border-gray-300 dark:border-gray-600 rounded-l-lg bg-brand-500 text-white focus:z-10 transition-colors";
+                btnL.className = "flex-1 py-2 px-4 text-sm font-medium border border-l-0 border-gray-300 dark:border-gray-600 rounded-r-lg bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-600 focus:z-10 transition-colors";
+            } else {
+                btnL.className = "flex-1 py-2 px-4 text-sm font-medium border border-l-0 border-gray-300 dark:border-gray-600 rounded-r-lg bg-brand-500 text-white focus:z-10 transition-colors";
+                btnP.className = "flex-1 py-2 px-4 text-sm font-medium border border-gray-300 dark:border-gray-600 rounded-l-lg bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-600 focus:z-10 transition-colors";
+            }
+        }
+
+        // --- Toast Notification ---
+        function showToast(message, type = 'info') {
+            const toast = document.getElementById('toast');
+            const toastMsg = document.getElementById('toastMessage');
+            const toastIcon = document.getElementById('toastIcon');
+            
+            toastMsg.textContent = message;
+            
+            if (type === 'error') {
+                toastIcon.className = "inline-flex flex-shrink-0 justify-center items-center w-8 h-8 rounded-lg text-red-500 bg-red-100 dark:bg-red-800 dark:text-red-200";
+                toastIcon.innerHTML = `<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path></svg>`;
+            } else if (type === 'success') {
+                toastIcon.className = "inline-flex flex-shrink-0 justify-center items-center w-8 h-8 rounded-lg text-green-500 bg-green-100 dark:bg-green-800 dark:text-green-200";
+                toastIcon.innerHTML = `<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path></svg>`;
+            } else {
+                toastIcon.className = "inline-flex flex-shrink-0 justify-center items-center w-8 h-8 rounded-lg text-blue-500 bg-blue-100 dark:bg-blue-800 dark:text-blue-200";
+                toastIcon.innerHTML = `<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path></svg>`;
+            }
+
+            toast.classList.add('show');
+            setTimeout(() => toast.classList.remove('show'), 3500);
+        }
+
+        // --- File Handling ---
+        function handleFileSelect(e) {
+            if (!e.target.files || !e.target.files.length) return;
+            processFiles(Array.from(e.target.files));
+            e.target.value = ''; // Reset
+        }
+
+        function handleGlobalPaste(e) {
+            // Ignore paste if user is typing in an input field
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+            
+            const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+            const files = [];
+            for (let index in items) {
+                const item = items[index];
+                if (item.kind === 'file' && item.type.startsWith('image/')) {
+                    const blob = item.getAsFile();
+                    // Provide a sequential name to allow natural sorting
+                    const ext = blob.type.split('/')[1] || 'jpeg';
+                    const numStr = String(pasteCounter).padStart(3, '0');
+                    const file = new File([blob], `Pasted_Image_${numStr}.${ext}`, { type: blob.type });
+                    files.push(file);
+                    pasteCounter++;
+                }
+            }
+            if (files.length > 0) {
+                e.preventDefault();
+                processFiles(files);
+                showToast(`Pasted ${files.length} photo(s)`, 'success');
+            }
+        }
+
+        async function processFiles(fileList) {
+            const validFiles = fileList.filter(f => f.type.startsWith('image/'));
+            if (!validFiles.length) {
+                showToast("No valid images detected.", "error");
+                return;
+            }
+
+            const processingToast = "Processing images...";
+            let processedCount = 0;
+
+            for (const file of validFiles) {
+                try {
+                    const normalizedImg = await normalizeImage(file);
+                    images.push(normalizedImg);
+                    processedCount++;
+                } catch (err) {
+                    console.error("Failed to process image:", file.name, err);
+                }
+            }
+
+            if (processedCount > 0) {
+                renderList();
+            }
+        }
+
+        // Normalize image using Canvas to strictly standard Base64 JPEG
+        // Ensures perfect compatibility with jsPDF
+        function normalizeImage(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        canvas.width = img.width;
+                        canvas.height = img.height;
+                        const ctx = canvas.getContext('2d');
+                        // Fill white background in case of transparent PNGs
+                        ctx.fillStyle = '#FFFFFF';
+                        ctx.fillRect(0, 0, canvas.width, canvas.height);
+                        ctx.drawImage(img, 0, 0);
+                        
+                        const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+                        
+                        resolve({
+                            id: Date.now().toString(36) + Math.random().toString(36).substr(2),
+                            name: file.name,
+                            dataUrl: dataUrl,
+                            width: img.width,
+                            height: img.height
+                        });
+                    };
+                    img.onerror = reject;
+                    img.src = e.target.result;
+                };
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+        }
+
+        // --- Rendering ---
+        function renderList() {
+            // Natural sort by filename
+            images.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+            
+            imageCount.textContent = images.length;
+            
+            if (images.length === 0) {
+                previewContainer.innerHTML = '';
+                previewContainer.appendChild(emptyState);
+                return;
+            }
+
+            // Keep empty state in DOM but hidden/detached for easy reuse
+            if (emptyState.parentNode === previewContainer) {
+                previewContainer.removeChild(emptyState);
+            }
+            
+            previewContainer.innerHTML = '';
+
+            images.forEach((img, idx) => {
+                const card = document.createElement('div');
+                card.className = "flex items-center gap-3 p-3 bg-white dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-lg group hover:border-brand-400 dark:hover:border-brand-500 transition-colors";
+                
+                card.innerHTML = `
+                    <div class="flex-shrink-0 w-14 h-14 bg-gray-100 dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-600 flex justify-center items-center overflow-hidden">
+                        <img src="${img.dataUrl}" alt="Preview" class="max-w-full max-h-full object-contain">
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-sm font-semibold text-gray-800 dark:text-gray-200 truncate" title="${img.name}">${img.name}</p>
+                        <p class="text-xs text-brand-600 dark:text-brand-400 font-medium">#${idx + 1}</p>
+                    </div>
+                    <button onclick="removeImage('${img.id}')" class="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-md transition-colors focus:outline-none" title="Remove">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                    </button>
+                `;
+                previewContainer.appendChild(card);
+            });
+        }
+
+        function removeImage(id) {
+            images = images.filter(img => img.id !== id);
+            renderList();
+        }
+
+        function clearAll() {
+            if(!images.length) return;
+            images = [];
+            pasteCounter = 1;
+            renderList();
+        }
+
+        // --- PDF Generation ---
+        function setButtonLoading(loading) {
+            const btnD = document.getElementById('btnDownload');
+            const btnP = document.getElementById('btnPrint');
+            isProcessing = loading;
+            
+            if (loading) {
+                btnD.disabled = true; btnP.disabled = true;
+                btnD.classList.add('opacity-75'); btnP.classList.add('opacity-75');
+            } else {
+                btnD.disabled = false; btnP.disabled = false;
+                btnD.classList.remove('opacity-75'); btnP.classList.remove('opacity-75');
+            }
+        }
+
+        async function handlePDFAction(action) {
+            if (images.length === 0) {
+                showToast("Please add at least one photo.", "error");
+                return;
+            }
+            if (isProcessing) return;
+
+            setButtonLoading(true);
+            
+            // Allow UI to update before heavy sync task
+            setTimeout(() => {
+                try {
+                    const doc = generatePDFDoc();
+                    if (action === 'download') {
+                        doc.save('Bill_Document.pdf');
+                        showToast("PDF Downloaded", "success");
+                    } else if (action === 'print') {
+                        const blobOutput = doc.output('bloburl');
+                        window.open(blobOutput, '_blank');
+                        showToast("Opening Print Dialog...", "success");
+                    }
+                } catch (error) {
+                    console.error(error);
+                    showToast("Failed to generate PDF.", "error");
+                } finally {
+                    setButtonLoading(false);
+                }
+            }, 50);
+        }
+
+        function generatePDFDoc() {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF({ orientation: orientation, unit: 'mm', format: 'a4' });
+            
+            const pageWidth = orientation === 'portrait' ? 210 : 297;
+            const pageHeight = orientation === 'portrait' ? 297 : 210;
+            
+            // Read Values
+            const margin = parseFloat(document.getElementById('marginRange').value);
+            const hGap = parseFloat(document.getElementById('hGapRange').value);
+            const vGap = parseFloat(document.getElementById('vGapRange').value);
+            const layout = document.getElementById('layoutSelect').value;
+
+            // Determine Grid
+            let cols = 1, rows = 1;
+            switch(layout) {
+                case '1':  cols = 1; rows = 1; break;
+                case '2v': cols = 1; rows = 2; break;
+                case '2h': cols = 2; rows = 1; break;
+                case '4':  cols = 2; rows = 2; break;
+                case '6':  cols = 2; rows = 3; break;
+            }
+
+            const itemsPerPage = cols * rows;
+            
+            // Math Setup
+            const usableWidth = pageWidth - (margin * 2);
+            const usableHeight = pageHeight - (margin * 2);
+            
+            const cellWidth = (usableWidth - (hGap * (cols - 1))) / cols;
+            const cellHeight = (usableHeight - (vGap * (rows - 1))) / rows;
+
+            images.forEach((img, index) => {
+                // Page breaks
+                if (index > 0 && index % itemsPerPage === 0) {
+                    doc.addPage();
+                }
+
+                // Calculate Cell Position
+                const posInPage = index % itemsPerPage;
+                const colIdx = posInPage % cols;
+                const rowIdx = Math.floor(posInPage / cols);
+
+                const cellX = margin + (colIdx * (cellWidth + hGap));
+                const cellY = margin + (rowIdx * (cellHeight + vGap));
+
+                // CONTAIN MATH: Scale image to fit perfectly inside the cell
+                const scale = Math.min(cellWidth / img.width, cellHeight / img.height);
+                
+                const finalW = img.width * scale;
+                const finalH = img.height * scale;
+
+                // Center image within the cell
+                const drawX = cellX + ((cellWidth - finalW) / 2);
+                const drawY = cellY + ((cellHeight - finalH) / 2);
+
+                // Add to PDF (type is always JPEG due to canvas normalization)
+                doc.addImage(img.dataUrl, 'JPEG', drawX, drawY, finalW, finalH);
+            });
+
+            return doc;
+        }
+
+        // Bootstrap
+        init();
+
+    </script>
+</body>
+</html>
